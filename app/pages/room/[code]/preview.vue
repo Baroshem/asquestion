@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const route = useRoute()
 const code = computed(() => String(route.params.code).toUpperCase())
-const { state, connected, loading, load } = useRoom(code.value)
+const { state, connectionStatus, loading, load } = useRoom(code.value)
 onMounted(() => load().catch(() => undefined))
 const activeQuestion = computed(() => state.value?.questions.find(question => question.id === state.value?.room.activeQuestionId) ?? null)
 </script>
@@ -9,8 +9,8 @@ const activeQuestion = computed(() => state.value?.questions.find(question => qu
 <template>
   <main class="relative flex min-h-screen items-center justify-center overflow-hidden bg-gray-950 px-6 py-12 text-white sm:px-12 lg:px-20">
     <div class="absolute left-6 top-6 flex items-center gap-2 text-sm text-gray-400 sm:left-10 sm:top-10">
-      <span class="size-2 rounded-full" :class="connected ? 'bg-green-400' : 'bg-amber-400'" />
-      {{ connected ? 'Live' : 'Reconnecting' }}
+      <span class="size-2 rounded-full" :class="connectionStatus === 'connected' ? 'bg-green-400' : connectionStatus === 'polling' ? 'bg-blue-400' : 'bg-amber-400'" />
+      {{ connectionStatus === 'connected' ? 'Live' : connectionStatus === 'polling' ? 'Live · polling' : 'Connecting' }}
     </div>
     <div class="absolute right-6 top-6 font-mono text-sm tracking-[0.25em] text-gray-500 sm:right-10 sm:top-10">{{ state?.room.code }}</div>
     <div class="w-full max-w-6xl text-center">

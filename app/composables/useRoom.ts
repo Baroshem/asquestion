@@ -2,11 +2,12 @@ import type { ClientEvent, Question, RoomState, ServerEvent } from '../../shared
 
 export function useRoom(code: string) {
   const state = useState<RoomState | null>(`room:${code}`, () => null)
-  const connected = useState<boolean>(`room:${code}:connected`, () => false)
+  const connectionStatus = useState<'connecting' | 'connected' | 'polling'>(`room:${code}:connection`, () => 'connecting')
   const loading = useState<boolean>(`room:${code}:loading`, () => true)
   const toast = useToast()
   let socket: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
+  let pollTimer: ReturnType<typeof setInterval> | undefined
   let attempts = 0
   let stopped = false
   let pendingVote: string | null = null
@@ -18,10 +19,19 @@ export function useRoom(code: string) {
   function applyEvent(event: ServerEvent) {
     if (!state.value) return
     switch (event.type) {
-      case 'room:state':
-        state.value = event.state
-        pendingVote = null
+      case 'room:state': {
+        const refreshedState = event.state
+        if (pendingVote) {
+          const currentVote = state.value.questions.find(question => question.id === pendingVote)?.voteCount
+          const refreshedQuestion = refreshedState.questions.find(question => question.id === pendingVote)
+          if (refreshedQuestion && currentVote !== undefined && !refreshedState.votedQuestionIds.includes(pendingVote)) {
+            refreshedQuestion.voteCount = Math.max(refreshedQuestion.voteCount, currentVote)
+            refreshedState.votedQuestionIds.push(pendingVote)
+          }
+        }
+        state.value = refreshedState
         break
+      }
       case 'question:created':
         state.value.questions = [event.question, ...state.value.questions.filter(q => q.id !== event.question.id)]
         break
@@ -55,13 +65,35 @@ export function useRoom(code: string) {
     }
   }
 
-  function send(event: ClientEvent): boolean {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      notifyError('The live connection is reconnecting. Please try again.')
-      return false
-    }
-    socket.send(JSON.stringify(event))
+  function send(action: Exclude<ClientEvent, { type: 'room:join' }>): boolean {
+    $fetch<{ events: ServerEvent[] }>(`/api/rooms/${encodeURIComponent(code)}/actions`, {
+      method: 'POST',
+      body: action,
+    }).then(({ events }) => {
+      events.forEach(applyEvent)
+    }).catch((error: unknown) => {
+      const message = error && typeof error === 'object' && 'statusMessage' in error
+        ? String(error.statusMessage)
+        : 'Action could not be completed. Check your connection and try again.'
+      applyEvent({ type: 'error', message })
+    })
     return true
+  }
+
+  async function refreshState() {
+    try {
+      const refreshedState = await $fetch<RoomState>(`/api/rooms/${encodeURIComponent(code)}`)
+      applyEvent({ type: 'room:state', state: refreshedState })
+    } catch {
+      // Keep showing the last state during brief network interruptions.
+    }
+  }
+
+  function startPolling() {
+    if (pollTimer || stopped) return
+    connectionStatus.value = 'polling'
+    pollTimer = setInterval(refreshState, 3000)
+    void refreshState()
   }
 
   function connect() {
@@ -70,7 +102,9 @@ export function useRoom(code: string) {
     socket = new WebSocket(`${scheme}//${window.location.host}/api/ws?code=${encodeURIComponent(code)}`)
     socket.onopen = () => {
       attempts = 0
-      connected.value = true
+      connectionStatus.value = 'connected'
+      if (pollTimer) clearInterval(pollTimer)
+      pollTimer = undefined
     }
     socket.onmessage = (message) => {
       try {
@@ -81,7 +115,7 @@ export function useRoom(code: string) {
     }
     socket.onerror = () => socket?.close()
     socket.onclose = () => {
-      connected.value = false
+      startPolling()
       if (!stopped) {
         attempts++
         reconnectTimer = setTimeout(connect, Math.min(1000 * 2 ** Math.min(attempts, 5), 10_000))
@@ -93,6 +127,7 @@ export function useRoom(code: string) {
     loading.value = true
     try {
       state.value = await $fetch<RoomState>(`/api/rooms/${encodeURIComponent(code)}`)
+      connectionStatus.value = 'connecting'
       connect()
     } catch (error: unknown) {
       const message = error && typeof error === 'object' && 'statusMessage' in error
@@ -120,10 +155,11 @@ export function useRoom(code: string) {
   function destroy() {
     stopped = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
+    if (pollTimer) clearInterval(pollTimer)
     socket?.close()
   }
 
   onScopeDispose(destroy)
 
-  return { state, connected, loading, load, send, vote }
+  return { state, connectionStatus, loading, load, send, vote }
 }

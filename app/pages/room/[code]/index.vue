@@ -3,7 +3,7 @@ import type { Question } from '#shared/types'
 
 const route = useRoute()
 const code = computed(() => String(route.params.code).toUpperCase())
-const { state, connected, loading, load, send, vote } = useRoom(code.value)
+const { state, connectionStatus, loading, load, send, vote } = useRoom(code.value)
 const draft = ref('')
 const sortBy = ref<'popular' | 'newest'>('popular')
 const submitting = ref(false)
@@ -43,9 +43,9 @@ function closeRoom() {
           <span class="flex size-8 items-center justify-center rounded-lg bg-primary text-white"><UIcon name="i-lucide-message-square-text" class="size-4" /></span>
           asquestion
         </NuxtLink>
-        <UBadge :color="connected ? 'success' : 'neutral'" variant="subtle" class="gap-1.5">
-          <span class="size-1.5 rounded-full" :class="connected ? 'bg-green-500' : 'bg-gray-400'" />
-          {{ connected ? 'Connected' : 'Reconnecting' }}
+        <UBadge :color="connectionStatus === 'connected' ? 'success' : 'neutral'" variant="subtle" class="gap-1.5">
+          <span class="size-1.5 rounded-full" :class="connectionStatus === 'connected' ? 'bg-green-500' : connectionStatus === 'polling' ? 'bg-blue-500' : 'bg-gray-400'" />
+          {{ connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'polling' ? 'Live · polling' : 'Connecting' }}
         </UBadge>
       </header>
 
