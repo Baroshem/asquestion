@@ -14,6 +14,7 @@
   "dependencies": {
     "@nuxt/eslint": "1.17.0",
     "@nuxt/ui": "4.13.0",
+    "@upstash/redis": "^1.41.0",
     "eslint": "^10.15.0",
     "nuxt": "^4.6.4",
     "tailwindcss": "^4.3.5",

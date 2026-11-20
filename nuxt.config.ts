@@ -10,8 +10,10 @@ export default defineNuxtConfig({
     },
     storage: {
       data: {
-        driver: 'fs',
+        driver: process.env.STORAGE_DRIVER || (process.env.VERCEL ? 'upstash' : 'fs'),
         base: process.env.DATA_DIR || './.data',
+        url: process.env.UPSTASH_REDIS_REST_URL,
+        token: process.env.UPSTASH_REDIS_REST_TOKEN,
       },
     },
   },
